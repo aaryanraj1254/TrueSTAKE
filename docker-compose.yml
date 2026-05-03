@@ -1,0 +1,41 @@
+services:
+  mongo:
+    image: mongo:7
+    container_name: truestake-mongo
+    ports:
+      - '27017:27017'
+    volumes:
+      - mongo-data:/data/db
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: truestake-api
+    env_file:
+      - ./apps/api/.env
+    environment:
+      PORT: 3001
+      CORS_ORIGIN: http://localhost:5173
+      MONGO_URL: mongodb://mongo:27017/truestake
+    ports:
+      - '3001:3001'
+    depends_on:
+      - mongo
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    container_name: truestake-web
+    env_file:
+      - ./apps/web/.env
+    environment:
+      VITE_API_URL: http://localhost:3001
+    ports:
+      - '5173:5173'
+    depends_on:
+      - api
+
+volumes:
+  mongo-data:
