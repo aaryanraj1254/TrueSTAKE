@@ -2,6 +2,10 @@
 
 TrueStake is a prediction-market monorepo with an Express API, React web app, Supabase persistence/auth, wallet flows, user dashboards, and an admin panel.
 
+![CI](https://img.shields.io/github/actions/workflow/status/truestake/truestake/ci.yml?branch=main&label=CI)
+![Node](https://img.shields.io/badge/node-20%2B-339933?logo=node.js&logoColor=white)
+![Turbo](https://img.shields.io/badge/monorepo-turborepo-ef4444)
+
 ## Architecture
 
 ```mermaid
@@ -51,9 +55,7 @@ API: `http://localhost:3001`
 | api | `SUPABASE_SERVICE_ROLE_KEY` | Yes      | Server-side Supabase key for admin operations.    |
 | api | `SUPABASE_ANON_KEY`         | No       | Fallback Supabase key.                            |
 | api | `SUPABASE_JWT_SECRET`       | Yes      | JWT secret used to verify Supabase access tokens. |
-| api | `CORS_ORIGIN`               | Yes      | Comma-separated allowed web origins.              |
-| api | `RATE_LIMIT_WINDOW_MS`      | No       | Rate limit window in ms.                          |
-| api | `RATE_LIMIT_MAX`            | No       | Max requests per window.                          |
+| api | `FRONTEND_URL`              | Yes      | Allowed web origin for CORS.                      |
 | api | `LOG_LEVEL`                 | No       | Winston log level.                                |
 | web | `VITE_API_URL`              | Yes      | API base URL.                                     |
 | web | `VITE_SUPABASE_URL`         | No       | Needed for realtime notifications.                |

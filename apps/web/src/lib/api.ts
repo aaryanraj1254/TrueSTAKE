@@ -1,5 +1,5 @@
-import axios from 'axios';
 import { type CreateMarketPayload, type Market } from '@truestake/shared';
+import { apiClient } from './axios';
 
 export interface DashboardTrade {
   id: string;
@@ -76,17 +76,24 @@ export interface TrendingMarket extends Market {
   volume: number;
 }
 
-const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL,
-});
+export interface WalletRecord {
+  user_id: string;
+  balance: number | string;
+}
 
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('accessToken');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-});
+export interface WalletMeResponse {
+  wallet: WalletRecord;
+  transactions: Array<{
+    id: string;
+    type: 'deposit' | 'withdrawal' | 'bet' | 'payout';
+    amount: number | string;
+    status: 'pending' | 'completed' | 'failed';
+    metadata?: Record<string, unknown>;
+    created_at: string;
+  }>;
+}
+
+const api = apiClient;
 
 export const fetchTrendingMarkets = async () => {
   const { data } = await api.get<TrendingMarket[]>('/dashboard/trending');
@@ -113,12 +120,22 @@ export const fetchMarket = async (id: string) => {
   return data;
 };
 
+export const fetchMarkets = async () => {
+  const { data } = await api.get<Market[]>('/markets');
+  return data;
+};
+
 export const placeTrade = async (payload: {
   market_id: string;
   option_id: string;
   amount: number;
 }) => {
   const { data } = await api.post('/trades', payload);
+  return data;
+};
+
+export const fetchWalletMe = async () => {
+  const { data } = await api.get<WalletMeResponse>('/wallet/me');
   return data;
 };
 

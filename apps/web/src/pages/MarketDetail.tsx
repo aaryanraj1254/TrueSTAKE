@@ -1,21 +1,18 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import axios from 'axios';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { MarketChart } from '../components/markets/MarketChart';
 import { ArrowLeft, Clock, CheckCircle, Wallet } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
-import { fetchMarket, placeTrade } from '../lib/api';
-import { toast } from 'sonner';
-
-interface WalletRecord {
-  balance: number | string;
-}
+import { fetchMarket, fetchWalletMe, type WalletMeResponse, placeTrade } from '../lib/api';
+import { toast } from '../lib/toast';
 
 export const MarketDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
   const [tradeMessage, setTradeMessage] = useState({ type: '', text: '' });
+  const [selectedSide, setSelectedSide] = useState<'yes' | 'no'>('yes');
+  const [amount, setAmount] = useState('10');
   const queryClient = useQueryClient();
 
   const marketQuery = useQuery({
@@ -26,52 +23,62 @@ export const MarketDetail: React.FC = () => {
   });
 
   const walletQuery = useQuery({
-    queryKey: ['wallet'],
-    queryFn: async () => {
-      const walletRes = await axios.get<WalletRecord>(`${import.meta.env.VITE_API_URL}/wallet`);
-      return walletRes.data;
-    },
+    queryKey: ['wallet', 'me'],
+    queryFn: fetchWalletMe,
     enabled: Boolean(user),
   });
 
   const tradeMutation = useMutation({
     mutationFn: placeTrade,
     onMutate: async (payload) => {
-      await queryClient.cancelQueries({ queryKey: ['wallet'] });
-      const previousWallet = queryClient.getQueryData<WalletRecord>(['wallet']);
+      await queryClient.cancelQueries({ queryKey: ['wallet', 'me'] });
+      const previousWallet = queryClient.getQueryData<WalletMeResponse>(['wallet', 'me']);
 
       if (previousWallet) {
-        queryClient.setQueryData(['wallet'], {
+        queryClient.setQueryData<WalletMeResponse>(['wallet', 'me'], {
           ...previousWallet,
-          balance: Number(previousWallet.balance ?? 0) - payload.amount,
+          wallet: {
+            ...previousWallet.wallet,
+            balance: Number(previousWallet.wallet.balance ?? 0) - payload.amount,
+          },
         });
       }
 
       setTradeMessage({ type: '', text: '' });
       return { previousWallet };
     },
-    onError: (err: unknown, _payload, context) => {
+    onError: (_error: unknown, _payload, context) => {
       if (context?.previousWallet) {
-        queryClient.setQueryData(['wallet'], context.previousWallet);
+        queryClient.setQueryData(['wallet', 'me'], context.previousWallet);
       }
-      const message = axios.isAxiosError(err)
-        ? err.response?.data?.error || 'Trade failed'
-        : 'Trade failed';
+      const message = 'Trade failed';
       setTradeMessage({ type: 'error', text: message });
       toast.error(message);
     },
-    onSuccess: () => {
-      setTradeMessage({ type: 'success', text: 'Trade placed successfully!' });
-      toast.success('Trade placed');
+    onSuccess: (_data, payload) => {
+      const selectedOption = (marketQuery.data?.options || []).find(
+        (option) => option.id === payload.option_id,
+      );
+      const estimate = selectedOption
+        ? (payload.amount * (100 / Math.max(selectedOption.current_price, 1))).toFixed(2)
+        : null;
+      const message = estimate
+        ? `Trade placed. Estimated payout: ${estimate} tokens`
+        : 'Trade placed successfully';
+      setTradeMessage({ type: 'success', text: message });
+      toast.success(message);
+      setAmount('10');
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['market', id] });
-      queryClient.invalidateQueries({ queryKey: ['wallet'] });
+      queryClient.invalidateQueries({ queryKey: ['wallet', 'me'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
     },
   });
 
-  const handleBuy = async (optionId: string, amount: number) => {
+  const handleTradeSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+
     if (!user) {
       setTradeMessage({ type: 'error', text: 'Please login to trade' });
       return;
@@ -82,11 +89,25 @@ export const MarketDetail: React.FC = () => {
       return;
     }
 
+    const tradeAmount = Number(amount);
+    if (!tradeAmount || tradeAmount <= 0) {
+      setTradeMessage({ type: 'error', text: 'Enter a valid amount' });
+      return;
+    }
+
+    const selectedOption = (marketQuery.data?.options || []).find(
+      (option) => option.label.toLowerCase() === selectedSide,
+    );
+    if (!selectedOption?.id) {
+      setTradeMessage({ type: 'error', text: `No ${selectedSide.toUpperCase()} option available` });
+      return;
+    }
+
     try {
       await tradeMutation.mutateAsync({
         market_id: id,
-        option_id: optionId,
-        amount,
+        option_id: selectedOption.id,
+        amount: tradeAmount,
       });
     } catch {
       // Error messaging is handled by the mutation.
@@ -94,7 +115,7 @@ export const MarketDetail: React.FC = () => {
   };
 
   const market = marketQuery.data;
-  const wallet = walletQuery.data;
+  const wallet = walletQuery.data?.wallet;
   const loading = marketQuery.isLoading || walletQuery.isLoading;
   const tradeLoading = tradeMutation.isPending;
 
@@ -121,6 +142,17 @@ export const MarketDetail: React.FC = () => {
   const sortedOptions = [...(market.options || [])].sort(
     (a, b) => b.current_price - a.current_price,
   );
+  const yesOption =
+    sortedOptions.find((option) => option.label.toLowerCase() === 'yes') || sortedOptions[0];
+  const noOption =
+    sortedOptions.find((option) => option.label.toLowerCase() === 'no') ||
+    sortedOptions.find((option) => option.id !== yesOption?.id);
+  const selectedOption = selectedSide === 'yes' ? yesOption : noOption;
+  const amountNumber = Number(amount) || 0;
+  const payoutEstimate = useMemo(() => {
+    if (!selectedOption || amountNumber <= 0) return 0;
+    return amountNumber * (100 / Math.max(selectedOption.current_price, 1));
+  }, [selectedOption, amountNumber]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -188,33 +220,65 @@ export const MarketDetail: React.FC = () => {
                 </div>
               )}
 
-              <div className="space-y-4">
-                {sortedOptions.map((opt) => {
-                  const isWinner = market.correct_outcome === opt.id;
-                  return (
-                    <div
-                      key={opt.id}
-                      className={`flex flex-col p-4 rounded-lg border ${isWinner ? 'border-primary bg-primary/5' : 'border-border bg-background'}`}
-                    >
-                      <div className="flex justify-between items-center mb-3">
-                        <span className="font-medium text-foreground">{opt.label}</span>
-                        <span className="font-bold text-xl text-foreground">
-                          {opt.current_price.toFixed(1)}¢
-                        </span>
-                      </div>
-                      <div className="flex gap-2">
-                        <button
-                          disabled={isClosed || tradeLoading || !opt.id}
-                          onClick={() => opt.id && handleBuy(opt.id, 10)}
-                          className="flex-1 py-2.5 rounded bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 font-bold text-sm transition-all active:scale-95"
-                        >
-                          Buy 10¢
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+              <form className="space-y-4" onSubmit={handleTradeSubmit}>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedSide('yes')}
+                    className={`rounded-lg border px-3 py-2 text-left transition-colors ${
+                      selectedSide === 'yes'
+                        ? 'border-emerald-500 bg-emerald-500/15 text-emerald-300'
+                        : 'border-border bg-background text-foreground'
+                    }`}
+                  >
+                    <p className="text-xs font-semibold uppercase tracking-wider">YES</p>
+                    <p className="text-lg font-bold">
+                      {yesOption ? `${yesOption.current_price.toFixed(1)}¢` : '--'}
+                    </p>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedSide('no')}
+                    className={`rounded-lg border px-3 py-2 text-left transition-colors ${
+                      selectedSide === 'no'
+                        ? 'border-emerald-500 bg-emerald-500/15 text-emerald-300'
+                        : 'border-border bg-background text-foreground'
+                    }`}
+                  >
+                    <p className="text-xs font-semibold uppercase tracking-wider">NO</p>
+                    <p className="text-lg font-bold">
+                      {noOption ? `${noOption.current_price.toFixed(1)}¢` : '--'}
+                    </p>
+                  </button>
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-foreground">Amount</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={amount}
+                    onChange={(event) => setAmount(event.target.value)}
+                    className="w-full rounded-lg border border-input bg-background px-3 py-2 text-foreground outline-none focus:ring-2 focus:ring-ring"
+                    placeholder="Enter amount"
+                  />
+                </div>
+
+                <div className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-muted-foreground">
+                  Potential payout:{' '}
+                  <span className="font-semibold text-foreground">
+                    {payoutEstimate.toFixed(2)} tokens
+                  </span>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isClosed || tradeLoading || !selectedOption?.id}
+                  className="w-full rounded-lg bg-primary py-2.5 text-sm font-bold text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50"
+                >
+                  {tradeLoading ? 'Placing trade...' : `Buy ${selectedSide.toUpperCase()}`}
+                </button>
+              </form>
 
               <div className="mt-6 pt-4 border-t border-border text-sm text-center text-muted-foreground">
                 Total Volume:{' '}

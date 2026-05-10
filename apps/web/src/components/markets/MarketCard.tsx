@@ -1,57 +1,81 @@
 import React from 'react';
 import { type Market } from '@truestake/shared';
 import { Link } from 'react-router-dom';
-import { format } from 'date-fns';
+import { formatDistanceToNowStrict } from 'date-fns';
 
 interface MarketCardProps {
   market: Market;
 }
 
 export const MarketCard: React.FC<MarketCardProps> = ({ market }) => {
+  const [countdown, setCountdown] = React.useState(() =>
+    formatDistanceToNowStrict(new Date(market.closes_at), { addSuffix: true }),
+  );
   const isClosed = new Date(market.closes_at) < new Date() || market.status !== 'open';
+  const totalVolume = (market.options || []).reduce((acc, opt) => acc + (opt.total_staked || 0), 0);
 
-  // Sort options by probability (price) descending
   const sortedOptions = [...(market.options || [])].sort(
     (a, b) => b.current_price - a.current_price,
   );
+  const yesOption =
+    sortedOptions.find((option) => option.label.toLowerCase() === 'yes') || sortedOptions[0];
+  const noOption =
+    sortedOptions.find((option) => option.label.toLowerCase() === 'no') ||
+    sortedOptions.find((option) => option.id !== yesOption?.id);
+
+  React.useEffect(() => {
+    const timer = window.setInterval(() => {
+      setCountdown(formatDistanceToNowStrict(new Date(market.closes_at), { addSuffix: true }));
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, [market.closes_at]);
 
   return (
     <Link to={`/markets/${market.id}`} className="block">
-      <div className="flex flex-col justify-between rounded-lg border border-border bg-card p-5 shadow-sm transition-shadow hover:shadow-md h-full">
+      <div className="flex h-full flex-col justify-between rounded-xl border border-emerald-900/50 bg-slate-900 p-5 shadow-lg shadow-transparent transition-all duration-200 hover:-translate-y-0.5 hover:shadow-emerald-900/30">
         <div>
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-semibold text-primary/80 uppercase tracking-wider">
+          <div className="mb-2 flex items-center justify-between">
+            <span className="rounded-full border border-emerald-700/70 bg-emerald-900/30 px-2 py-1 text-xs font-semibold uppercase tracking-wider text-emerald-300">
               {market.category}
             </span>
             <span
-              className={`text-xs px-2 py-1 rounded-full ${isClosed ? 'bg-muted text-muted-foreground' : 'bg-primary/10 text-primary'}`}
+              className={`rounded-full px-2 py-1 text-xs ${isClosed ? 'bg-slate-800 text-slate-300' : 'bg-emerald-500/20 text-emerald-300'}`}
             >
               {market.status.toUpperCase()}
             </span>
           </div>
-          <h3 className="text-lg font-bold text-foreground line-clamp-2 mb-2">{market.title}</h3>
+          <h3 className="mb-2 line-clamp-2 text-lg font-bold text-slate-100">{market.title}</h3>
 
-          <div className="space-y-3 mt-4">
-            {sortedOptions.slice(0, 2).map((opt) => (
-              <div key={opt.id} className="flex items-center justify-between text-sm">
-                <span className="text-foreground font-medium truncate pr-2">{opt.label}</span>
-                <span className="text-foreground font-bold">{opt.current_price.toFixed(1)}¢</span>
-              </div>
-            ))}
-            {sortedOptions.length > 2 && (
-              <div className="text-xs text-muted-foreground text-center">
-                + {sortedOptions.length - 2} more options
-              </div>
-            )}
+          <div className="mt-4 grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              className="rounded-lg border border-emerald-700/80 bg-emerald-500/10 px-3 py-2 text-left transition-colors hover:bg-emerald-500/20"
+            >
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-emerald-300">
+                YES
+              </p>
+              <p className="text-base font-bold text-emerald-100">
+                {yesOption ? `${yesOption.current_price.toFixed(1)}¢` : '--'}
+              </p>
+            </button>
+            <button
+              type="button"
+              className="rounded-lg border border-slate-700 bg-slate-800/70 px-3 py-2 text-left transition-colors hover:bg-slate-700"
+            >
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-300">
+                NO
+              </p>
+              <p className="text-base font-bold text-slate-100">
+                {noOption ? `${noOption.current_price.toFixed(1)}¢` : '--'}
+              </p>
+            </button>
           </div>
         </div>
 
-        <div className="mt-6 pt-4 border-t border-border flex justify-between items-center text-xs text-muted-foreground">
-          <span>
-            {market.options?.reduce((acc, opt) => acc + (opt.total_staked || 0), 0).toFixed(0)}{' '}
-            staked
-          </span>
-          <span>Closes {format(new Date(market.closes_at), 'MMM d, yyyy')}</span>
+        <div className="mt-6 flex items-center justify-between border-t border-slate-800 pt-4 text-xs text-slate-300">
+          <span>Vol {totalVolume.toFixed(0)}</span>
+          <span>{countdown}</span>
         </div>
       </div>
     </Link>

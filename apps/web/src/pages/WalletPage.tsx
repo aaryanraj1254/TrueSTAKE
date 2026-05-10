@@ -11,33 +11,27 @@ import {
   Phone,
   Plus,
   Wallet,
+  Package,
+  ShoppingBag,
+  Shirt,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Skeleton, TableSkeleton } from '../components/Skeleton';
+import { apiClient } from '../lib/axios';
+import { fetchWalletMe, type WalletMeResponse } from '../lib/api';
 
 type TransactionType = 'deposit' | 'withdrawal' | 'bet' | 'payout';
 type TransactionStatus = 'pending' | 'completed' | 'failed';
-type WithdrawPlatform = 'gpay' | 'phonepe' | 'paytm' | 'bank';
-
-interface WalletRecord {
-  user_id: string;
-  balance: number | string;
-}
-
-interface TransactionRecord {
-  id: string;
-  type: TransactionType;
-  amount: number | string;
-  status: TransactionStatus;
-  metadata?: Record<string, unknown>;
-  created_at: string;
-}
-
-interface WalletResponse {
-  wallet: WalletRecord;
-  transactions: TransactionRecord[];
-}
+type WithdrawPlatform =
+  | 'gpay'
+  | 'phonepe'
+  | 'paytm'
+  | 'bank'
+  | 'amazon'
+  | 'flipkart'
+  | 'ajio'
+  | 'paypal';
 
 const currency = new Intl.NumberFormat('en-IN', {
   style: 'currency',
@@ -59,6 +53,13 @@ const transactionTone: Record<TransactionStatus, string> = {
   failed: 'bg-red-500/10 text-red-700',
 };
 
+const transactionTypeTone: Record<TransactionType, string> = {
+  deposit: 'bg-emerald-500/15 text-emerald-700',
+  withdrawal: 'bg-orange-500/15 text-orange-700',
+  bet: 'bg-blue-500/15 text-blue-700',
+  payout: 'bg-purple-500/15 text-purple-700',
+};
+
 const typeLabel: Record<TransactionType, string> = {
   deposit: 'Deposit',
   withdrawal: 'Withdrawal',
@@ -71,6 +72,10 @@ const platforms: Array<{ value: WithdrawPlatform; label: string; icon: React.Ele
   { value: 'phonepe', label: 'PhonePe', icon: Phone },
   { value: 'paytm', label: 'Paytm', icon: CreditCard },
   { value: 'bank', label: 'Bank', icon: Building2 },
+  { value: 'amazon', label: 'Amazon', icon: Package },
+  { value: 'flipkart', label: 'Flipkart', icon: ShoppingBag },
+  { value: 'ajio', label: 'Ajio', icon: Shirt },
+  { value: 'paypal', label: 'PayPal', icon: CreditCard },
 ];
 
 const getErrorMessage = (error: unknown, fallback: string) => {
@@ -90,18 +95,13 @@ export const WalletPage: React.FC = () => {
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [actionLoading, setActionLoading] = useState<'deposit' | 'withdraw' | null>(null);
 
-  const fetchWallet = async () => {
-    const { data } = await axios.get<WalletResponse>(`${import.meta.env.VITE_API_URL}/wallet/me`);
-    return data;
-  };
-
   const walletQuery = useQuery({
     queryKey: ['wallet', 'me'],
-    queryFn: fetchWallet,
+    queryFn: fetchWalletMe,
   });
 
-  const wallet = walletQuery.data?.wallet ?? null;
-  const transactions = walletQuery.data?.transactions ?? [];
+  const wallet = (walletQuery.data as WalletMeResponse | undefined)?.wallet ?? null;
+  const transactions = (walletQuery.data as WalletMeResponse | undefined)?.transactions ?? [];
   const isLoading = walletQuery.isLoading;
   const balance = useMemo(() => Number(wallet?.balance ?? 0), [wallet]);
 
@@ -115,7 +115,7 @@ export const WalletPage: React.FC = () => {
     try {
       setActionLoading('deposit');
       setMessage(null);
-      await axios.post(`${import.meta.env.VITE_API_URL}/wallet/deposit`, {
+      await apiClient.post('/wallet/deposit', {
         amount,
         provider: 'razorpay',
       });
@@ -142,7 +142,7 @@ export const WalletPage: React.FC = () => {
     try {
       setActionLoading('withdraw');
       setMessage(null);
-      await axios.post(`${import.meta.env.VITE_API_URL}/wallet/withdraw`, {
+      await apiClient.post('/wallet/withdraw', {
         amount,
         platform: withdrawPlatform,
         account: withdrawAccount,
@@ -276,7 +276,13 @@ export const WalletPage: React.FC = () => {
                     ) : (
                       transactions.map((item) => (
                         <tr key={item.id}>
-                          <td className="px-5 py-4 font-medium">{typeLabel[item.type]}</td>
+                          <td className="px-5 py-4">
+                            <span
+                              className={`rounded-full px-2.5 py-1 text-xs font-semibold ${transactionTypeTone[item.type]}`}
+                            >
+                              {typeLabel[item.type]}
+                            </span>
+                          </td>
                           <td className="px-5 py-4">{formatAmount(item.amount)}</td>
                           <td className="px-5 py-4">
                             <span
@@ -329,7 +335,7 @@ export const WalletPage: React.FC = () => {
 
             <div className="mt-5">
               <p className="text-sm font-medium">Platform</p>
-              <div className="mt-2 grid grid-cols-2 gap-2">
+              <div className="mt-2 grid grid-cols-2 sm:grid-cols-4 gap-2">
                 {platforms.map((platform) => {
                   const Icon = platform.icon;
                   const isSelected = withdrawPlatform === platform.value;
