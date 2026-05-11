@@ -162,3 +162,60 @@ export const withdraw = async (req: Request, res: Response) => {
       .json({ error: error instanceof Error ? error.message : 'Withdrawal failed' });
   }
 };
+
+export const redeemFunds = async (req: Request, res: Response) => {
+  const result = WithdrawSchema.safeParse(req.body);
+  if (!result.success) {
+    return res.status(400).json({ error: 'Invalid input', details: result.error.format() });
+  }
+
+  try {
+    const user_id = req.user.id;
+    const { amount, platform, account } = result.data;
+    const wallet = await getOrCreateWallet(user_id);
+    const balance = toNumber(wallet.balance);
+
+    if (balance < amount) {
+      return res.status(400).json({ error: 'Insufficient balance' });
+    }
+
+    const { error: walletError } = await supabase
+      .from('wallets')
+      .update({ balance: balance - amount })
+      .eq('user_id', user_id)
+      .select()
+      .single();
+
+    if (walletError) {
+      return res.status(500).json({ error: walletError.message });
+    }
+
+    const { data: transaction, error: transactionError } = await supabase
+      .from('transactions')
+      .insert({
+        user_id,
+        type: 'withdrawal',
+        amount,
+        status: 'pending',
+        metadata: {
+          platform,
+          account,
+          requestedAt: new Date().toISOString(),
+        },
+      })
+      .select()
+      .single();
+
+    if (transactionError) {
+      return res.status(500).json({ error: transactionError.message });
+    }
+
+    return res
+      .status(202)
+      .json({ success: true, message: 'Redemption request submitted successfully', transaction });
+  } catch (error) {
+    return res
+      .status(500)
+      .json({ error: error instanceof Error ? error.message : 'Redemption failed' });
+  }
+};

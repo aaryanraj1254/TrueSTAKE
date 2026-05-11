@@ -134,9 +134,34 @@ export const placeTrade = async (payload: {
   return data;
 };
 
-export const fetchWalletMe = async () => {
-  const { data } = await api.get<WalletMeResponse>('/wallet/me');
-  return data;
+export const fetchWalletMe = async (): Promise<WalletMeResponse> => {
+  const response = await apiClient.get<WalletMeResponse>('/wallet/me');
+  return response.data;
+};
+
+export const redeemFunds = async (data: {
+  amount: number;
+  platform: string;
+  account: string;
+}): Promise<{ success: boolean; message: string }> => {
+  const response = await apiClient.post<{ success: boolean; message: string }>(
+    '/wallet/redeem',
+    data,
+  );
+  return response.data;
+};
+
+export const fetchCelebrityTweets = async (filter?: string, search?: string): Promise<Tweet[]> => {
+  const params = new URLSearchParams();
+  if (filter && filter !== 'all') {
+    params.append('category', filter);
+  }
+  if (search) {
+    params.append('search', search);
+  }
+
+  const response = await api.get<Tweet[]>(`/celebrity-tweets?${params.toString()}`);
+  return response.data;
 };
 
 export const fetchAdminMarkets = async () => {

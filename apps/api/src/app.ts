@@ -96,6 +96,7 @@ app.get('/wallet', authenticateToken, tradeController.getWallet);
 app.get('/wallet/me', authenticateToken, walletController.getMyWallet);
 app.post('/wallet/deposit', authenticateToken, walletController.deposit);
 app.post('/wallet/withdraw', authenticateToken, walletController.withdraw);
+app.post('/wallet/redeem', authenticateToken, walletController.redeemFunds);
 
 // Dashboard Routes
 app.get('/dashboard/trending', authenticateToken, dashboardController.getTrendingMarkets);
